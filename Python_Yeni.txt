@@ -1,0 +1,70 @@
+import cv2
+import mediapipe as mp
+import socket
+import time
+
+abb_socket = socket.socket()
+abb_socket.connect(("127.0.0.1" , 8000))
+
+mp_drawing = mp.solutions.drawing_utils
+mp_hands = mp.solutions.hands
+
+cap = cv2.VideoCapture(0)
+
+with mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5, min_tracking_confidence=0.5) as hands:
+
+    while cap.isOpened():
+        success, image = cap.read()
+        
+        if not success:
+            print("Video akışı başarısız.")
+            break
+
+        
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        results = hands.process(image_rgb)
+
+        if results.multi_hand_landmarks:
+            
+            for hand_landmarks, hand_id in zip(results.multi_hand_landmarks, results.multi_handedness):
+                
+                mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                
+
+                if hand_id.classification[0].label == 'Left':
+    
+                    sag_index_finger_landmark = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                    sag_index_finger_x = int(sag_index_finger_landmark.x * image.shape[1])
+                    sag_index_finger_y = int(sag_index_finger_landmark.y * image.shape[0])
+
+                    cv2.putText(image, f" X:{sag_index_finger_x}, Y:{sag_index_finger_y}",(sag_index_finger_x, sag_index_finger_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    
+                    abb_socket.send(str(sag_index_finger_x).encode()+str(sag_index_finger_y).encode()+str(distance).encode())
+                    time.sleep(0.2)
+                    
+                if hand_id.classification[0].label == 'Right':
+                    
+                    index_finger_landmark = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                    thumb_landmark = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+                    
+                    index_finger_x = int(index_finger_landmark.x * image.shape[1])
+                    index_finger_y = int(index_finger_landmark.y * image.shape[0])
+                    
+                    thumb_x = int(thumb_landmark.x * image.shape[1])
+                    thumb_y = int(thumb_landmark.y * image.shape[0])
+
+                    distance = ((index_finger_x - thumb_x) ** 2 + (index_finger_y - thumb_y) ** 2) ** 0.5
+                    
+                    middle_x = (index_finger_x + thumb_x) // 2
+                    middle_y = (index_finger_y + thumb_y) // 2
+
+                    cv2.putText(image, f"{distance:.2f}",(middle_x, middle_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+        cv2.imshow('Hand Tracking', image)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            
+            break
+
+cap.release()
+cv2.destroyAllWindows()
